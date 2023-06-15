@@ -14,14 +14,15 @@ library(tidyverse)
 library(tidyquant)
 library(broom)
 library(umap)
+library(magrittr)
+library(dplyr)
 ```
 
-
-sp_500_prices_tbl <- readRDS("sp_500_prices_tbl.rds")
+```{r}
+sp_500_prices_tbl <- readRDS("C:/Users/rampr/OneDrive/Documents/GitHub/ss23-bdml-muhundhan-ramprasath/sp_500_prices_tbl.rds")
 sp_500_prices_tbl
 
-```{r}
-sp_500_index_tbl <- readRDS("sp_500_index_tbl.rds")
+sp_500_index_tbl <- readRDS("C:/Users/rampr/OneDrive/Documents/GitHub/ss23-bdml-muhundhan-ramprasath/sp_500_index_tbl.rds")
 sp_500_index_tbl
 ```
 
@@ -91,7 +92,7 @@ ggplot(kmeans_mapped_tbl, aes(x = centers, y = tot.withinss)) +
 ```
 #Apply umap
 
-```{r}
+```{r, warning=FALSE}
 ?umap
 umap_results <- stock_date_matrix_tbl %>%
   select(-symbol) %>%
@@ -110,25 +111,4 @@ umap_results_tbl %>%
   geom_point(alpha = 0.5) + 
   labs(title = "UMAP Projection") +
   theme_tq()
-```
-
-#combine kmeans and umap
-```{r}
-kmeans_obj <- kmeans_mapped_tbl %>%
-  pull(k_means) %>%
-  pluck(10)
-  
-combined_result_tbl <- kmeans_obj %>%
-augment(stock_date_matrix_tbl)%>%
-  select(symbol, .cluster) %>%
-  left_join(umap_results_tbl, by = "symbol") %>%
-  left_join(select(sp_500_index_tbl, symbol, company, sector), by = "symbol")
-```
-
-```{r}
-ggplot(combined_result_tbl, aes(x = V1, y = V2, color = factor(.cluster))) +
-geom_point(alpha = 0.5) +
-scale_color_manual(values = rainbow(10) %>% rep(3)) +
-labs(title = "Combined K-Means and UMAP Results") +
-theme_minimal()
 ```
