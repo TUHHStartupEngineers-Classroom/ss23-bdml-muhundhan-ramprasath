@@ -1,98 +1,134 @@
 ---
-title: "Tidyverse"
-author: "Joschka Schwarz"
+title: "Machine Learning Fundamentals"
+author: "Ramprasath Muhundhan"
 ---
 
-::: callout-note
-You can delete everything in here and start fresh.
-:::
+# Libraries
 
-This is a `.qmd` file. It is plain text with special features. Any time you write just like this, it will be compiled to normal text in the website. If you put a \# in front of your text, it will create a top level-header.
-
-To learn more about Quarto websites visit <https://quarto.org/docs/websites>.
-
-# Text Formatting
-
-*italics* and **bold**
-
-superscript^2^ / subscript~2~
-
-~~strikethrough~~
-
-`verbatim code`
-
-> Blockquote
-
-# Headings
-
-## Header 2
-### Header 3
-#### Header 4
-##### Header 5
-###### Header 6
-
-# Links & Images
-
-<https://quarto.org>
-
-[Quarto](https://quarto.org)
-
-![Caption](../../assets/img/elephant.png)
-
-[![Caption](../../assets/img/elephant.png)](https://quarto.org)
-
-[![Caption](../../assets/img/elephant.png)](https://quarto.org "An elephant")
-
-
-# Lists
-
-* unordered list
-    + sub-item 1
-    + sub-item 2
-        - sub-sub-item 1
-        
-*   item 2
-
-    Continued (indent 4 spaces)
-    
-    
-1. ordered list
-2. item 2
-    i) sub-item 1
-         A.  sub-sub-item 1
-         
-(@)  A list whose numbering
-
-continues after
-
-(@)  an interruption
-
-# Tables
-
-| Right | Left | Default | Center |
-|------:|:-----|---------|:------:|
-|   12  |  12  |    12   |    12  |
-|  123  |  123 |   123   |   123  |
-|    1  |    1 |     1   |     1  |
-
-# Source Code
-
-Use ``` to delimit blocks of source code:
-
-```
-code
-```
-
-Add a language to syntax highlight code blocks:
+Load the following libraries. 
 
 ```{r}
-1 + 1
+# install.packages("plotly")
+
+library(tidyverse)
+library(tidyquant)
+library(broom)
+library(umap)
+```
+
+
+sp_500_prices_tbl <- readRDS("sp_500_prices_tbl.rds")
+sp_500_prices_tbl
+
+```{r}
+sp_500_index_tbl <- readRDS("sp_500_index_tbl.rds")
+sp_500_index_tbl
+```
+
+#Convert stock price to standard format
+```{r}
+sp_500_daily_returns_tbl <- sp_500_prices_tbl %>%
+select(symbol, date, adjusted) %>%
+filter(date > "2018-01-01") %>%
+group_by(symbol) %>%
+mutate(adjusted_lag = lag(adjusted),
+         pct_return = (adjusted - adjusted_lag) / adjusted_lag) %>%
+na.omit() %>%
+select(symbol, date, pct_return) 
+```
+
+
+```{r}
+sp_500_daily_returns_tbl
+```
+
+#convert to user-item format
+
+```{r}
+stock_date_matrix_tbl <- sp_500_daily_returns_tbl %>%
+pivot_wider(names_from = date, values_from = pct_return, values_fill = 0) %>%
+  ungroup()
+```
+
+#k-map cluster
+```{r}
+?kmeans
+kmeans_obj <- stock_date_matrix_tbl %>%
+select(-symbol) %>%
+  kmeans(centers = 4, nstart = 20)
+
 ```
 
 ```{r}
-cars
+kmeans_obj$cluster
 ```
 
 ```{r}
-plot(cars)
+glance(kmeans_obj)
+```
+
+#find optimal value of k
+```{r}
+kmeans_mapper <- function(center = 3) {
+    stock_date_matrix_tbl %>%
+        select(-symbol) %>%
+        kmeans(centers = center, nstart = 20)
+}
+
+kmeans_mapped_tbl <- tibble(centers = 1:30) %>%
+  mutate(k_means = centers %>% map(kmeans_mapper)) %>%
+  mutate(glance  = k_means %>% map(glance))
+  
+kmeans_mapped_tbl <- kmeans_mapped_tbl %>%unnest(glance) %>% select(centers, tot.withinss)
+```
+
+```{r}
+ggplot(kmeans_mapped_tbl, aes(x = centers, y = tot.withinss)) +
+  geom_point() +
+  geom_line() +
+  labs(title = "Scree Plot") +
+  theme_minimal()
+```
+#Apply umap
+
+```{r}
+?umap
+umap_results <- stock_date_matrix_tbl %>%
+  select(-symbol) %>%
+  umap()
+  
+umap_results_tbl <- umap_results$layout %>%
+  as_tibble() %>% 
+  bind_cols(
+    stock_date_matrix_tbl %>% select(symbol)
+  )
+```
+
+```{r}  
+umap_results_tbl %>%
+  ggplot(aes(V1, V2)) +
+  geom_point(alpha = 0.5) + 
+  labs(title = "UMAP Projection") +
+  theme_tq()
+```
+
+#combine kmeans and umap
+```{r}
+kmeans_obj <- kmeans_mapped_tbl %>%
+  pull(k_means) %>%
+  pluck(10)
+  
+combined_result_tbl <- kmeans_obj %>%
+augment(stock_date_matrix_tbl)%>%
+  select(symbol, .cluster) %>%
+  left_join(umap_results_tbl, by = "symbol") %>%
+  left_join(select(sp_500_index_tbl, symbol, company, sector), by = "symbol")
+```
+
+```{r}
+ggplot(combined_result_tbl, aes(x = V1, y = V2, color = factor(.cluster))) +
+geom_point(alpha = 0.5) +
+scale_color_manual(values = rainbow(10) %>% rep(3)) +
+labs(title = "Combined K-Means and UMAP Results") +
+theme_minimal()
 ```
