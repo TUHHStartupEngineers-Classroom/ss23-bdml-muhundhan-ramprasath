@@ -1,0 +1,111 @@
+---
+title: "Automated Machine Learning with H2O"
+author: "Ramprasath Muhundhan"
+---
+
+#Challenge 1
+
+1. Compensation Features
+
+Q: What can you deduce about the interaction between Monthly Income and Attrition?
+A: Those that are leaving have a lower Monthly Income
+
+Q: What can you deduce about the interaction between Percent Salary Hike and Attrition?
+A: Those that are leaving have lower Percent Salary Hike
+
+Q: What can you deduce about the interaction between Stock Option Level and Attrition?
+A: It's difficult to deduce anything based on the visualization
+
+2. Survey Results
+
+Q: What can you deduce about the interaction between Environment Satisfaction and Attrition?
+A:  higher proportion of those leaving have a low environment satisfaction level
+
+Q: What can you deduce about the interaction between Work Life Balance and Attrition?
+A: Those that are staying have a higher density of 2's and 3's
+
+3. Performance Data
+
+Q: What Can you deduce about the interaction between Job Involvement and Attrition?
+A: Those that are leaving have a lower density of 3’s and 4’s
+
+4. Work-Life Feature
+
+Q: What can you deduce about the interaction between Over Time and Attrition?
+A: The proportion of those staying that are working Over Time are high compared to those that are not staying
+
+5. Training and Education
+
+Q: What can you deduce about the interaction between Training Times Last Year and Attrition?
+A: It's difficult to deduce anything based on the visualization
+
+6. Time-Based Feature
+
+Q: What can you deduce about the interaction between Years At Company and Attrition?
+A: People that leave tend to have less working years at the company
+
+Q: What can you deduce about the interaction between Years Since Last Promotion and Attrition?
+A: Those that are leaving have fewer years since last promotion than those that are staying
+
+
+
+#challenge 2
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(h2o)
+library(recipes)
+library(rsample)
+```
+
+```{r}
+h2o.init()
+```
+
+```{r}
+product_backorders_tbl <- read_csv("C:/Users/rampr/OneDrive/Documents/GitHub/ss23-bdml-muhundhan-ramprasath/product_backorders.csv")
+```
+
+```{r}
+set.seed(seed = 1113)
+split_obj <- rsample::initial_split(product_backorders_tbl, prop = 0.85)
+
+train_tbl <- training(split_obj)
+test_tbl  <- testing(split_obj)
+```
+
+```{r}
+recipe_obj <- recipe(went_on_backorder ~., data = train_tbl) %>% 
+  prep()
+
+train_tbl <- bake(recipe_obj, new_data = train_tbl)
+test_tbl  <- bake(recipe_obj, new_data = test_tbl)
+
+split_h2o <- h2o.splitFrame(as.h2o(train_tbl), ratios = c(0.85), seed = 1234)
+train_h2o <- split_h2o[[1]]
+valid_h2o <- split_h2o[[2]]
+test_h2o  <- as.h2o(test_tbl)
+```
+
+```{r}
+y <- "went_on_backorder"
+x <- setdiff(names(train_h2o), y)
+automl_models_h2o <- h2o.automl(
+  x = x,
+  y = y,
+  training_frame    = train_h2o,
+  validation_frame  = valid_h2o,
+  leaderboard_frame = test_h2o,
+  max_runtime_secs  = 30,
+  nfolds            = 5 
+)
+```
+
+```{r}
+my_leaderboard <- as.tibble(automl_models_h2o@leaderboard)
+```
+
+```{r}
+my_leaderboard
+```
