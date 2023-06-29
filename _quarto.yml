@@ -20,8 +20,8 @@ website:
             file: content/01_journal/02_supervised_ml.qmd
           - text: "03 Automated Machine Learning with h2o"
             file: content/01_journal/03_Automated_ML_with_H2O.qmd
-          - text: "04 Data Visualization"
-            file: content/01_journal/04_data_visualization.qmd
+          - text: "04 Performance Measure"
+            file: content/01_journal/04_performance_measure.qmd
       - text: "Class notes"
         file: content/02_notes/05_class_notes.qmd
       - text: "Links"
