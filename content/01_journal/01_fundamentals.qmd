@@ -1,0 +1,114 @@
+---
+title: "Machine Learning Fundamentals"
+author: "Ramprasath Muhundhan"
+---
+
+# Libraries
+
+Load the following libraries. 
+
+```{r}
+# install.packages("plotly")
+
+library(tidyverse)
+library(tidyquant)
+library(broom)
+library(umap)
+library(magrittr)
+library(dplyr)
+```
+
+```{r}
+sp_500_prices_tbl <- readRDS("C:/Users/rampr/OneDrive/Documents/GitHub/ss23-bdml-muhundhan-ramprasath/sp_500_prices_tbl.rds")
+sp_500_prices_tbl
+
+sp_500_index_tbl <- readRDS("C:/Users/rampr/OneDrive/Documents/GitHub/ss23-bdml-muhundhan-ramprasath/sp_500_index_tbl.rds")
+sp_500_index_tbl
+```
+
+#Convert stock price to standard format
+```{r}
+sp_500_daily_returns_tbl <- sp_500_prices_tbl %>%
+select(symbol, date, adjusted) %>%
+filter(date > "2018-01-01") %>%
+group_by(symbol) %>%
+mutate(adjusted_lag = lag(adjusted),
+         pct_return = (adjusted - adjusted_lag) / adjusted_lag) %>%
+na.omit() %>%
+select(symbol, date, pct_return) 
+```
+
+
+```{r}
+sp_500_daily_returns_tbl
+```
+
+#convert to user-item format
+
+```{r}
+stock_date_matrix_tbl <- sp_500_daily_returns_tbl %>%
+pivot_wider(names_from = date, values_from = pct_return, values_fill = 0) %>%
+  ungroup()
+```
+
+#k-map cluster
+```{r}
+?kmeans
+kmeans_obj <- stock_date_matrix_tbl %>%
+select(-symbol) %>%
+  kmeans(centers = 4, nstart = 20)
+
+```
+
+```{r}
+kmeans_obj$cluster
+```
+
+```{r}
+glance(kmeans_obj)
+```
+
+#find optimal value of k
+```{r}
+kmeans_mapper <- function(center = 3) {
+    stock_date_matrix_tbl %>%
+        select(-symbol) %>%
+        kmeans(centers = center, nstart = 20)
+}
+
+kmeans_mapped_tbl <- tibble(centers = 1:30) %>%
+  mutate(k_means = centers %>% map(kmeans_mapper)) %>%
+  mutate(glance  = k_means %>% map(glance))
+  
+kmeans_mapped_tbl <- kmeans_mapped_tbl %>%unnest(glance) %>% select(centers, tot.withinss)
+```
+
+```{r}
+ggplot(kmeans_mapped_tbl, aes(x = centers, y = tot.withinss)) +
+  geom_point() +
+  geom_line() +
+  labs(title = "Scree Plot") +
+  theme_minimal()
+```
+#Apply umap
+
+```{r, warning=FALSE}
+?umap
+umap_results <- stock_date_matrix_tbl %>%
+  select(-symbol) %>%
+  umap()
+  
+umap_results_tbl <- umap_results$layout %>%
+  as_tibble() %>% 
+  bind_cols(
+    stock_date_matrix_tbl %>% select(symbol)
+  )
+```
+
+```{r}  
+umap_results_tbl %>%
+  ggplot(aes(V1, V2)) +
+  geom_point(alpha = 0.5) + 
+  labs(title = "UMAP Projection") +
+  theme_tq()
+```

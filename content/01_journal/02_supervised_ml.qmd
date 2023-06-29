@@ -1,0 +1,88 @@
+---
+title: "Supervised ML"
+author: "Ramprasath Muhundhan"
+---
+
+```{r}
+library(recipes)
+library(tidyverse)
+library(dplyr)
+library(stringr)
+library(rsample)
+library(workflows)
+library(parsnip)
+```
+
+```{r}
+bike_features_tbl <- readRDS("C:/Users/rampr/OneDrive/Documents/GitHub/ss23-bdml-muhundhan-ramprasath/bike_features_tbl.rds") %>%
+select(model, price, frame_material, weight)
+```
+
+
+#creating recipe
+```{r}
+bike_recipe <- recipe(price ~ weight, data = bike_features_tbl) %>%
+  step_dummy(all_nominal(), -all_outcomes(), one_hot = TRUE)
+
+bike_baked <- prep(bike_recipe) %>%
+bake(new_data = bike_features_tbl) %>%
+mutate(model = bike_features_tbl$model)
+```
+
+
+```{r}
+ggplot(bike_baked, aes(x = price, y = weight)) +
+  geom_point() +
+  labs(title = "Scatter Plot", x = "Price", y = "Weight")
+```
+
+```{r}
+set.seed(1113)
+split_obj <- initial_split(bike_baked, prop = 0.80)
+
+train_tbl <- training(split_obj)
+test_tbl <- testing(split_obj)
+```
+
+
+#linear model
+
+```{r}
+linear_model <- linear_reg(mode = "regression")
+workflow_obj <- workflow(bike_recipe, linear_model) %>%
+fit(data = train_tbl)
+
+linear_prediction <-  predict(workflow_obj, new_data = test_tbl)
+
+linear_comparison <- linear_prediction %>%
+  mutate(weight = test_tbl$weight) %>%
+  mutate(correct_price = test_tbl$price)
+```
+
+# decision tree model
+```{r}
+decision_tree_model <- decision_tree(mode = "regression", tree_depth = 5, cost_complexity = 0.001, min_n = 7)
+dt_workflow_obj <- workflow(bike_recipe, decision_tree_model) %>%
+fit(data = train_tbl)
+dt_prediction <- predict(dt_workflow_obj,  new_data = test_tbl)
+dt_comparison <- dt_prediction %>%
+mutate(weight = test_tbl$weight) %>%
+mutate(correct_price = test_tbl$price)
+```
+
+#Random forest
+```{r}
+rf_model <- rand_forest(mode = "regression", mtry = 8, trees = 5000, min_n = 10)
+rf_workflow_obj <- workflow(bike_recipe, rf_model) %>% fit(data = train_tbl)  
+rf_prediction <- predict(rf_workflow_obj, new_data = test_tbl)
+rf_comparison <- rf_prediction %>%
+mutate(weight = test_tbl$weight) %>%
+mutate(correct_price = test_tbl$price)
+```
+
+#comparison
+```{r}
+linear_comparison %>% yardstick::metrics(truth = correct_price, estimate = .pred)
+dt_comparison %>% yardstick::metrics(truth = correct_price, estimate = .pred)
+rf_comparison %>% yardstick::metrics(truth = correct_price, estimate = .pred)
+```

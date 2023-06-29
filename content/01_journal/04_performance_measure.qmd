@@ -1,0 +1,93 @@
+---
+title: "Performance Measure"
+author: "Ramprasath Muhundhan"
+---
+
+#load Libraries
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(h2o)
+library(recipes)
+library(rsample)
+```
+
+#import data
+```{r}
+product_backorders_tbl <- read_csv("C:/Users/rampr/OneDrive/Documents/GitHub/ss23-bdml-muhundhan-ramprasath/product_backorders.csv")
+
+set.seed(seed = 1113)
+split_obj <- rsample::initial_split(product_backorders_tbl, prop = 0.85)
+train_tbl <- training(split_obj)
+test_tbl  <- testing(split_obj)
+```
+
+
+#create recipe and bake
+```{r}
+h2o.init()
+recipe_obj <- recipe(went_on_backorder ~., data = train_tbl) %>% 
+  prep()
+
+train_tbl <- bake(recipe_obj, new_data = train_tbl)
+test_tbl  <- bake(recipe_obj, new_data = test_tbl)
+```
+
+```{r}
+split_h2o <- h2o.splitFrame(as.h2o(train_tbl), ratios = c(0.85), seed = 1234)
+train_h2o <- split_h2o[[1]]
+valid_h2o <- split_h2o[[2]]
+test_h2o  <- as.h2o(test_tbl)
+```
+
+
+```{r}
+y <- "went_on_backorder"
+x <- setdiff(names(train_h2o), y)
+automl_models_h2o <- h2o.automl(
+  x = x,
+  y = y,
+  training_frame    = train_h2o,
+  validation_frame  = valid_h2o,
+  leaderboard_frame = test_h2o,
+  max_runtime_secs  = 30,
+  nfolds            = 5 
+)
+```
+
+#Visulalization
+
+```{r}
+leaderboard <- automl_models_h2o@leaderboard %>%
+as_tibble() %>%
+select(-c(mean_per_class_error, rmse, mse))
+
+data_transformed_tbl <- automl_models_h2o@leaderboard %>%
+  as_tibble() %>%
+  select(-c(aucpr, mean_per_class_error, rmse, mse)) %>% 
+  mutate(model_type = str_extract(model_id, "[^_]+")) %>%
+  slice(1:15) %>% 
+  rownames_to_column(var = "rowname") %>%
+  mutate(
+    model_id   = as_factor(model_id) %>% reorder(auc),
+    model_type = as.factor(model_type)
+  ) %>% 
+  pivot_longer(cols = -c(model_id, model_type, rowname), 
+               names_to = "key", 
+               values_to = "value", 
+               names_transform = list(key = forcats::fct_inorder)
+  ) %>% 
+  mutate(model_id = paste0(rowname, ". ", model_id) %>% as_factor() %>% fct_rev())
+  
+  
+  model1 <- automl_models_h2o@leaderboard[1, "model_id"] %>%
+  h2o.getModel()
+  
+  model2 <- automl_models_h2o@leaderboard[5, "model_id"] %>%
+  h2o.getModel()
+
+  model3 <- automl_models_h2o@leaderboard[6, "model_id"] %>%
+  h2o.getModel()
+```
+
